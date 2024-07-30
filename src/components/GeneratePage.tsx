@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge"
 
 export default function generatePage() {
   return (
-    <div className="min-h-screen p-4 space-y-4">
+    <div className="space-y-4 ">
       <header className="flex items-center justify-between p-4 border-b">
         <h1 className="text-xl font-bold">Generate & Edit</h1>
         <div className="flex items-center space-x-4">
@@ -30,10 +30,11 @@ export default function generatePage() {
           <Button variant="outline">Download Image</Button>
         </div>
       </header>
-      <main className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <div>
-          <Card className="space-y-4">
-            <CardContent>
+      <main className="grid grid-cols-1 gap-4 md:grid-cols-2" style={{height: 'calc(80vh)' }}>
+        <div className="h-full">
+        <Card className="space-y-4 rounded-lg border-white">
+          <CardContent className="p-0 h-auto space-y-8"> {/* Added space-y-5 here */}
+            <div className="flex items-center space-x-4 h-full">
               <Select>
                 <SelectTrigger>
                   <SelectValue placeholder="Customize Persona" />
@@ -52,10 +53,11 @@ export default function generatePage() {
                   <SelectItem value="doc2">Document 2</SelectItem>
                 </SelectContent>
               </Select>
-              <Textarea placeholder="Add Content" className="w-full" defaultValue="We is going to the market." />
-              <Button className="w-full">Submit</Button>
-            </CardContent>
-          </Card>
+            </div>
+            <Textarea placeholder="Add Content" className="w-full" style={{height: 'calc(70vh)' }} defaultValue="I am looking to..." />
+          </CardContent>
+          <Button>Submit</Button>
+        </Card>
         </div>
         <div>
           <ScrollArea className="h-[calc(100vh-8rem)]">

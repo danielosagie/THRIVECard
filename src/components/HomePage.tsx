@@ -7,7 +7,7 @@ const HomePage = () => {
   return (
     <div>
       <Hero />
-      <div className="container mx-auto px-4 py-20">
+      <div className="container mx-auto px-4 py-5">
         <h2 className="text-3xl font-bold mb-6">Featured Articles</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card>
@@ -37,14 +37,6 @@ const HomePage = () => {
               <p>Explore educational resources and programs available to military spouses.</p>
             </CardContent>
           </Card>
-        </div>
-        <div className="mt-12 space-y-4">
-          <Button asChild className="w-full">
-            <Link to="/input">Start Your Journey</Link>
-          </Button>
-          <Button asChild variant="outline" className="w-full">
-            <Link to="/generate">Generate Resources</Link>
-          </Button>
         </div>
       </div>
     </div>
