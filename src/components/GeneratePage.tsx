@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { useLocation, Link } from 'react-router-dom';
+import axios from 'axios';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -7,9 +8,8 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
-import { Link, useNavigate } from 'react-router-dom';
 import { Input } from "@/components/ui/input"
-import { X, Plus, SidebarOpen } from 'lucide-react'
+import { X, Plus, SidebarOpen, Check } from 'lucide-react'
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 
 interface Version {
@@ -34,10 +34,14 @@ export default function GeneratePage() {
   const [rawOutput, setRawOutput] = useState<string>('');
   const [chatHistory, setChatHistory] = useState<string[]>([]);
   const [streamingChat, setStreamingChat] = useState<string>('');
+  const [availableDocuments, setAvailableDocuments] = useState<string[]>([]);
+  const [selectedDocuments, setSelectedDocuments] = useState<string[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     fetchVersions();
+    fetchAvailableDocuments();
+
     if (location.state?.input) {
       if (textareaRef.current) {
         textareaRef.current.value = location.state.input;
@@ -47,6 +51,33 @@ export default function GeneratePage() {
       setPersona(location.state.persona);
     }
   }, [location.state]);
+
+  const fetchVersions = async () => {
+    try {
+      const response = await fetch('http://localhost:5000/get_versions');
+      const data = await response.json();
+      setVersions(data.versions);
+    } catch (error) {
+      console.error('Error fetching versions:', error);
+    }
+  };
+
+  const fetchAvailableDocuments = async () => {
+    try {
+      const response = await axios.get('http://localhost:5000/get_uploaded_files');
+      setAvailableDocuments(response.data.files);
+    } catch (error) {
+      console.error('Error fetching available documents:', error);
+    }
+  };
+
+  const toggleDocument = (document: string) => {
+    setSelectedDocuments(prev =>
+      prev.includes(document)
+        ? prev.filter(d => d !== document)
+        : [...prev, document]
+    );
+  };
 
   const generatePersona = async (input: string, uploadedFiles: string[]) => {
     setIsGenerating(true);
@@ -58,7 +89,11 @@ export default function GeneratePage() {
       const response = await fetch('http://localhost:5000/generate_persona', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input, uploaded_files: uploadedFiles })
+        body: JSON.stringify({ 
+          input, 
+          uploaded_files: uploadedFiles,
+          selected_documents: selectedDocuments
+        })
       });
 
       const reader = response.body!.getReader();
@@ -82,16 +117,6 @@ export default function GeneratePage() {
       console.error('Error generating persona:', error);
     } finally {
       setIsGenerating(false);
-    }
-  };
-
-  const fetchVersions = async () => {
-    try {
-      const response = await fetch('http://localhost:5000/get_versions');
-      const data = await response.json();
-      setVersions(data.versions);
-    } catch (error) {
-      console.error('Error fetching versions:', error);
     }
   };
 
@@ -140,14 +165,13 @@ export default function GeneratePage() {
     }
   };
 
-
   return (
     <div className="space-y-4 bg-white">
       <header className="flex items-center justify-between p-4 border-b">
         <div className='flex items-center gap-6'>
           <Link to="/input" className="text-sm text-muted-foreground">&larr; Back</Link>
           <h1 className="text-xl font-bold">Generate & Edit</h1>
-          </div>
+        </div>
         <div className="flex items-center space-x-4">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -211,8 +235,21 @@ export default function GeneratePage() {
                     <SelectValue placeholder="Documents" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="doc1">Document 1</SelectItem>
-                    <SelectItem value="doc2">Document 2</SelectItem>
+                    {availableDocuments.map((doc) => (
+                      <SelectItem key={doc} value={doc}>
+                        <div className="flex items-center">
+                          <span>{doc}</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => toggleDocument(doc)}
+                            className="ml-2"
+                          >
+                            {selectedDocuments.includes(doc) ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                          </Button>
+                        </div>
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -224,7 +261,7 @@ export default function GeneratePage() {
                 defaultValue="I am looking to..." 
               />
             </CardContent>
-            <Button onClick={() => generatePersona(textareaRef.current?.value || '', [])}>
+            <Button onClick={() => generatePersona(textareaRef.current?.value || '', selectedDocuments)}>
               {isGenerating ? 'Generating...' : 'Submit'}
             </Button>
           </Card>

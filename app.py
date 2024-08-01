@@ -58,7 +58,7 @@ def test_llm():
         return jsonify({'message': test_response.get('Description', 'Test successful, but no description generated.')}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
+    
 @app.route('/upload', methods=['POST'])
 def upload_file():
     if 'file' not in request.files:
@@ -75,16 +75,25 @@ def upload_file():
         
         return jsonify({'message': result, 'filename': filename}), 200
 
+@app.route('/get_uploaded_files', methods=['GET'])
+def get_uploaded_files():
+    files = os.listdir(UPLOAD_FOLDER)
+    return jsonify({'files': files})
+
 @app.route('/generate_persona', methods=['POST'])
 def generate_persona():
     input_text = request.json['input']
     uploaded_files = request.json.get('uploaded_files', [])
+    selected_documents = request.json.get('selected_documents', [])
     generation_method = request.json.get('generation_method', 'ollama')
     
     agent = hf_agent if generation_method == 'hf_endpoint' else ollama_agent
     
     def generate():
-        prompt = f"""Generate a detailed persona based on this input and the following files: {input_text}. Files: {', '.join(uploaded_files)}"""
+        prompt = f"""Generate a detailed persona based on this input and the following files: {input_text}. 
+        Files: {', '.join(uploaded_files)}
+        Selected documents: {', '.join(selected_documents)}
+        Include categories such as Education, Experience, Skills, Strengths, Goals, and Values. Format the response as a JSON object."""
         persona = agent.instruct(prompt)
         
         for key, value in persona.items():
@@ -168,11 +177,6 @@ def load_version(version_id):
         return jsonify({'persona': version_data['persona']})
     else:
         return jsonify({'error': 'Version not found'}), 404
-
-@app.route('/get_uploaded_files', methods=['GET'])
-def get_uploaded_files():
-    files = os.listdir(UPLOAD_FOLDER)
-    return jsonify({'files': files})
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

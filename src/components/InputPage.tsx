@@ -10,43 +10,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/use-toast";
-import { Combobox, ComboboxItem } from "@/components/ui/combobox"
-
-interface IconProps extends React.SVGProps<SVGSVGElement> {
-  // You can add any additional props here if needed
-}
-
-interface ComboboxItem {
-  label: string;
-  value: string;
-}
-
-
-function UploadIcon(props: IconProps) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-      <polyline points="17 8 12 3 7 8" />
-      <line x1="12" x2="12" y1="3" y2="15" />
-    </svg>
-  );
-}
 
 export default function InputPage() {
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [uploadedFiles, setUploadedFiles] = useState<{ file: File; progress: number; enabled: boolean }[]>([]);
+  const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
   const [generationMethod, setGenerationMethod] = useState('ollama');
   const [hfEndpoint, setHfEndpoint] = useState('');
   const [hfToken, setHfToken] = useState('');
@@ -58,9 +26,6 @@ export default function InputPage() {
     const savedInput = localStorage.getItem('inputText');
     if (savedInput) setInputText(savedInput);
 
-    const savedFiles = localStorage.getItem('uploadedFiles');
-    if (savedFiles) setUploadedFiles(JSON.parse(savedFiles));
-
     const savedMethod = localStorage.getItem('generationMethod');
     if (savedMethod) setGenerationMethod(savedMethod);
 
@@ -69,16 +34,27 @@ export default function InputPage() {
 
     const savedToken = localStorage.getItem('hfToken');
     if (savedToken) setHfToken(savedToken);
+
+    // Fetch uploaded files from the server
+    fetchUploadedFiles();
   }, []);
 
   useEffect(() => {
     // Save data to localStorage whenever it changes
     localStorage.setItem('inputText', inputText);
-    localStorage.setItem('uploadedFiles', JSON.stringify(uploadedFiles));
     localStorage.setItem('generationMethod', generationMethod);
     localStorage.setItem('hfEndpoint', hfEndpoint);
     localStorage.setItem('hfToken', hfToken);
-  }, [inputText, uploadedFiles, generationMethod, hfEndpoint, hfToken]);
+  }, [inputText, generationMethod, hfEndpoint, hfToken]);
+
+  const fetchUploadedFiles = async () => {
+    try {
+      const response = await axios.get('http://localhost:5000/get_uploaded_files');
+      setUploadedFiles(response.data.files);
+    } catch (error) {
+      console.error('Error fetching uploaded files:', error);
+    }
+  };
 
   const initializeLLM = async (method: string) => {
     try {
@@ -118,35 +94,13 @@ export default function InputPage() {
     }
   };
 
-  const onDrop = useCallback((acceptedFiles: File[]) => {
-    setUploadedFiles(prev => [
-      ...prev,
-      ...acceptedFiles.map(file => ({ file, progress: 0, enabled: true }))
-    ]);
-  }, []);
-
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop });
-
-  const uploadFiles = async () => {
-    const uploadPromises = uploadedFiles.filter(f => f.enabled).map(async ({ file }) => {
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
+    const uploadPromises = acceptedFiles.map(async (file) => {
       const formData = new FormData();
       formData.append('file', file);
   
       try {
-        const response = await axios.post('http://localhost:5000/upload', formData, {
-          onUploadProgress: (progressEvent: AxiosProgressEvent) => {
-            if (progressEvent.total !== undefined) {
-              const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-              setUploadedFiles(prev => 
-                prev.map(f => 
-                  f.file === file ? { ...f, progress: percentCompleted } : f
-                )
-              );
-            } else {
-              console.warn('Upload progress cannot be calculated');
-            }
-          }
-        });
+        const response = await axios.post('http://localhost:5000/upload', formData);
         return response.data.filename;
       } catch (error) {
         console.error(`Error uploading file ${file.name}:`, error);
@@ -155,39 +109,29 @@ export default function InputPage() {
     });
   
     try {
-      const uploadedFileNames = await Promise.all(uploadPromises);
-      return uploadedFileNames;
+      await Promise.all(uploadPromises);
+      fetchUploadedFiles();
     } catch (error) {
       console.error('Error uploading files:', error);
-      throw error;
     }
-  };
-  
+  }, []);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop });
+
   const handleGeneratePersona = async () => {
     setIsLoading(true);
     try {
-      const uploadedFileNames = await uploadFiles();
+      // Save input text as a document
+      await axios.post('http://localhost:5000/save_input', { input: inputText });
 
-      const response = await fetch('http://localhost:5000/generate_persona', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          input: inputText,
-          uploaded_files: uploadedFileNames,
-          generation_method: generationMethod,
-          hf_endpoint: hfEndpoint,
-          hf_token: hfToken
-        }),
+      const response = await axios.post('http://localhost:5000/generate_persona', {
+        input: inputText,
+        generation_method: generationMethod,
+        hf_endpoint: hfEndpoint,
+        hf_token: hfToken
       });
 
-      if (!response.ok) {
-        throw new Error('Network response was not ok');
-      }
-
-      const data = await response.json();
-      navigate('/generate', { state: { persona: data } });
+      navigate('/generate', { state: { persona: response.data } });
     } catch (error) {
       console.error('Error:', error);
       toast({
@@ -200,25 +144,6 @@ export default function InputPage() {
       setIsLoading(false);
     }
   };
-
-  const removeFile = (fileToRemove: File) => {
-    setUploadedFiles(prev => prev.filter(({ file }) => file !== fileToRemove));
-  };
-
-  const [selectedFiles, setSelectedFiles] = useState<string[]>([])
-
-  const toggleFileEnabled = (fileName: string) => {
-    setSelectedFiles(prev =>
-      prev.includes(fileName)
-        ? prev.filter(f => f !== fileName)
-        : [...prev, fileName]
-    )
-  }
-
-  const comboboxItems: ComboboxItem[] = uploadedFiles.map(f => ({
-    label: f.file.name,
-    value: f.file.name
-  }))
 
   return (
     <div className="flex flex-col items-center w-full bg-white">
@@ -246,24 +171,6 @@ export default function InputPage() {
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
           />
-          <Combobox
-            items={uploadedFiles.map(f => ({ label: f.file.name, value: f.file.name }))}
-            onChange={(value: string) => {
-              const file = uploadedFiles.find(f => f.file.name === value)?.file;
-              if (file) toggleFileEnabled(file);
-            }}
-            renderOption={(item: ComboboxItem) => (
-              <div className="flex items-center justify-between">
-                <span>{item.label}</span>
-                {uploadedFiles.find(f => f.file.name === item.value)?.enabled && <Check className="w-4 h-4" />}
-              </div>
-            )}
-          >
-            <Button variant="outline" className="w-full justify-between">
-              Manage Documents
-              <Upload className="ml-2 h-4 w-4" />
-            </Button>
-          </Combobox>
           <div 
             {...getRootProps()} 
             className={`flex items-center justify-center w-full p-4 mb-4 border-2 border-dashed rounded-lg cursor-pointer ${
@@ -276,36 +183,18 @@ export default function InputPage() {
             ) : (
               <>
                 <Upload className="mr-2 h-5 w-5 text-gray-500" />
-                <span className="text-gray-500">Add a PDF or Docx</span>
+                <span className="text-gray-500">Drag & drop files here, or click to select files</span>
               </>
             )}
           </div>
-          {uploadedFiles.map(({ file, progress, enabled }) => (
-            <div key={file.name} className="mb-2 relative">
-              <div className="flex justify-between items-center mb-1">
-                <p className="text-sm">{file.name}</p>
-                <div className="flex items-center">
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={() => toggleFileEnabled(file)}
-                    className="p-0 h-auto mr-2"
-                  >
-                    {enabled ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
-                  </Button>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={() => removeFile(file)}
-                    className="p-0 h-auto"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
+          <div className="mb-4">
+            <h3 className="font-semibold mb-2">Uploaded Files:</h3>
+            {uploadedFiles.map((file) => (
+              <div key={file} className="flex items-center justify-between mb-1">
+                <span>{file}</span>
               </div>
-              <Progress value={progress} className="w-full" />
-            </div>
-          ))}
+            ))}
+          </div>
           <div className="w-full max-w-md">
             <Select 
               onValueChange={(value) => {

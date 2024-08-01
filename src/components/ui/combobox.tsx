@@ -1,3 +1,5 @@
+// components/ui/combobox.tsx
+
 import * as React from "react"
 import { Check, ChevronsUpDown } from "lucide-react"
 
@@ -21,36 +23,40 @@ export interface ComboboxItem {
   label: string
 }
 
-interface ComboboxProps {
+export interface ComboboxProps {
   items: ComboboxItem[]
   onChange: (value: string) => void
   placeholder?: string
-  emptyMessage?: string
+  children?: React.ReactNode
 }
 
-export function Combobox({ items, onChange, placeholder = "Select item...", emptyMessage = "No items found." }: ComboboxProps) {
+export function Combobox({ items, onChange, placeholder = "Select item...", children }: ComboboxProps) {
   const [open, setOpen] = React.useState(false)
   const [value, setValue] = React.useState("")
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          className="w-full justify-between"
-        >
-          {value
-            ? items.find((item) => item.value === value)?.label
-            : placeholder}
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-        </Button>
+        {children ? (
+          children
+        ) : (
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            className="w-full justify-between"
+          >
+            {value
+              ? items.find((item) => item.value === value)?.label
+              : placeholder}
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        )}
       </PopoverTrigger>
       <PopoverContent className="w-full p-0">
         <Command>
           <CommandInput placeholder={placeholder} />
-          <CommandEmpty>{emptyMessage}</CommandEmpty>
+          <CommandEmpty>No items found.</CommandEmpty>
           <CommandGroup>
             {items.map((item) => (
               <CommandItem
