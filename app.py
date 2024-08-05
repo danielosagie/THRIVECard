@@ -6,6 +6,14 @@ import json
 from datetime import datetime
 from agent import Agent
 import subprocess
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+HUGGINGFACE_API_TOKEN = os.getenv('HUGGINGFACE_API_TOKEN')
+OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL')
+
 
 app = Flask(__name__)
 CORS(app)

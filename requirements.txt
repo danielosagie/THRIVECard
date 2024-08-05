@@ -8,4 +8,15 @@ transformers
 torch
 chromadb
 PyPDF2
+flask
+flask-cors
+werkzeug
+langchain
+langchain_huggingface
+langchain_community
+langchain_chroma
+chromadb
+unstructured
+ollama
+python-dotenv
 #export HUGGINGFACE_API_TOKEN="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"
