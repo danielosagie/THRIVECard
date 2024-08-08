@@ -8,6 +8,10 @@ from agent import Agent
 import subprocess
 from dotenv import load_dotenv
 import os
+from langchain_community.llms import HuggingFaceEndpoint
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_chroma import Chroma
+
 
 load_dotenv()
 
