@@ -22,8 +22,26 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-
-.venv/
+venv/
 __pycache__/
 *.pyc
 .env
+
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# PyTorch
+*.pth
+*.pt
+*.bin
+
+# Large files
+*.dll
+*.so
+*.dylib
+
+# Chroma
+chroma_db/
