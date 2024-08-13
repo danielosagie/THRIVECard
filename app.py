@@ -4,191 +4,167 @@ from werkzeug.utils import secure_filename
 import os
 import json
 from datetime import datetime
-from agent import Agent
-import subprocess
+import sqlite3
 from dotenv import load_dotenv
-import os
-from langchain_community.llms import HuggingFaceEndpoint
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
+from agent import Agent
+import logging
 
 
 load_dotenv()
 
-HUGGINGFACE_API_TOKEN = os.getenv('HUGGINGFACE_API_TOKEN')
-OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL')
+logging.basicConfig(level=logging.INFO)
 
+OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')
+MODEL_NAME = os.getenv('MODEL_NAME', 'llama3')
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}})
 
-UPLOAD_FOLDER = 'uploads'
-DOCUMENT_FOLDER = 'documents'
-CHROMA_DB_PATH = 'chroma_db'
-PERSONAS_FOLDER = 'user_data/personas'
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['DOCUMENT_FOLDER'] = DOCUMENT_FOLDER
+BASE_DIR = 'user_data'
+CHROMA_DIR = os.path.join(BASE_DIR, 'chroma_db')
+DB_PATH = os.path.join(BASE_DIR, 'local_db.sqlite')
 
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(DOCUMENT_FOLDER, exist_ok=True)
-os.makedirs(CHROMA_DB_PATH, exist_ok=True)
-os.makedirs(PERSONAS_FOLDER, exist_ok=True)
+# Ensure the directory exists
+os.makedirs(CHROMA_DIR, exist_ok=True)
 
-hf_agent = Agent("HFAgent", CHROMA_DB_PATH, "")
-ollama_agent = Agent("OllamaAgent", CHROMA_DB_PATH, "http://localhost:11434")
+chroma_client = Chroma(persist_directory=CHROMA_DIR)
 
-@app.route('/initialize_ollama', methods=['POST'])
-def initialize_ollama():
-    try:
-        subprocess.Popen(["ollama", "run", "llama3"])
-        return jsonify({'message': 'Ollama initialized successfully'}), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+agent = Agent("MainAgent", CHROMA_DIR, OLLAMA_BASE_URL, MODEL_NAME)
 
-@app.route('/initialize_hf_endpoint', methods=['POST'])
-def initialize_hf_endpoint():
-    try:
-        endpoint = request.json.get('endpoint')
-        token = request.json.get('token')
-        if not endpoint or not token:
-            return jsonify({'error': 'Endpoint or token not provided'}), 400
+def init_db():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS personas
+                 (id INTEGER PRIMARY KEY, name TEXT, data JSON, timestamp TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS documents
+                 (id INTEGER PRIMARY KEY, filename TEXT, content TEXT, timestamp TEXT)''')
+    conn.commit()
+    conn.close()
 
-        hf_agent.llm.endpoint_url = endpoint
-        hf_agent.llm.huggingfacehub_api_token = token
-        
-        return jsonify({'message': 'HuggingFace Endpoint initialized successfully'}), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/test_llm', methods=['POST'])
-def test_llm():
-    method = request.json.get('method')
-    agent = hf_agent if method == 'hf_endpoint' else ollama_agent
+def create_or_update_db():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
     
-    try:
-        test_response = agent.instruct("Generate a short test message to confirm the LLM is working.")
-        return jsonify({'message': test_response.get('Description', 'Test successful, but no description generated.')}), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    # Check if 'personas' table exists and has the correct schema
+    c.execute("CREATE TABLE IF NOT EXISTS personas (id INTEGER PRIMARY KEY, name TEXT, data JSON, timestamp TEXT)")
     
-@app.route('/upload', methods=['POST'])
-def upload_file():
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file part'}), 400
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'No selected file'}), 400
-    if file:
-        filename = secure_filename(file.filename)
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(file_path)
-        
-        result = ollama_agent.add_to_db(file_path)
-        
-        return jsonify({'message': result, 'filename': filename}), 200
+    # Check if 'documents' table exists and has the correct schema
+    c.execute("CREATE TABLE IF NOT EXISTS documents (id INTEGER PRIMARY KEY, filename TEXT, content TEXT, timestamp TEXT)")
+    
+    conn.commit()
+    conn.close()
 
-@app.route('/get_uploaded_files', methods=['GET'])
-def get_uploaded_files():
-    files = os.listdir(UPLOAD_FOLDER)
-    return jsonify({'files': files})
+# Call this function before starting the Flask app
+create_or_update_db()
+
+# Initialize folders and database
+os.makedirs(BASE_DIR, exist_ok=True)
+init_db()
+
+@app.route('/')
+def home():
+    return "Server is running"
+
+@app.route('/test', methods=['GET'])
+def test():
+    return jsonify({"message": "Flask server is running"}), 200
+
+@app.route('/get_input_documents', methods=['GET'])
+def get_input_documents():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT filename, content FROM documents")
+    documents = {row[0]: row[1] for row in c.fetchall()}
+    conn.close()
+    return jsonify(documents)
+
+@app.route('/update_document', methods=['POST'])
+def update_document():
+    data = request.json
+    filename = data['filename']
+    content = data['content']
+    
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("UPDATE documents SET content = ?, timestamp = ? WHERE filename = ?",
+              (content, datetime.now().isoformat(), filename))
+    if c.rowcount == 0:
+        c.execute("INSERT INTO documents (filename, content, timestamp) VALUES (?, ?, ?)",
+                  (filename, content, datetime.now().isoformat()))
+    conn.commit()
+    conn.close()
+    
+    # Update Chroma DB
+    agent.add_to_db(content, filename)
+    
+    return jsonify({'message': f'Document {filename} updated successfully'})
 
 @app.route('/generate_persona', methods=['POST'])
 def generate_persona():
-    input_text = request.json['input']
-    uploaded_files = request.json.get('uploaded_files', [])
-    selected_documents = request.json.get('selected_documents', [])
-    generation_method = request.json.get('generation_method', 'ollama')
-    
-    agent = hf_agent if generation_method == 'hf_endpoint' else ollama_agent
-    
-    def generate():
-        prompt = f"""Generate a detailed persona based on this input and the following files: {input_text}. 
-        Files: {', '.join(uploaded_files)}
-        Selected documents: {', '.join(selected_documents)}
-        Include categories such as Education, Experience, Skills, Strengths, Goals, and Values. Format the response as a JSON object."""
-        persona = agent.instruct(prompt)
+    try:
+        input_text = request.json['input']
+        selected_documents = request.json.get('selected_documents', [])
         
-        for key, value in persona.items():
-            yield json.dumps({key: value}) + '\n'
+        documents_content = []
+        if selected_documents:
+            conn = sqlite3.connect(DB_PATH)
+            c = conn.cursor()
+            placeholders = ','.join(['?'] * len(selected_documents))
+            c.execute(f"SELECT content FROM documents WHERE filename IN ({placeholders})", selected_documents)
+            documents_content = [row[0] for row in c.fetchall() if row[0]]
+            conn.close()
 
-    return Response(stream_with_context(generate()), mimetype='application/json')
+        prompt = f"""Generate a detailed persona based on this input and the following documents: {input_text}. 
+        Documents content: {' '.join(documents_content)}
+        Include categories such as Education, Experience, Skills, Strengths, Goals, and Values. Format the response as a JSON object."""
+        
+        logging.info(f"Sending prompt to agent: {prompt}")
+        persona = agent.generate(prompt)
+        
+        logging.info(f"Received persona from agent: {persona}")
+        
+        if isinstance(persona, dict) and 'error' in persona:
+            logging.error(f"Error generating persona: {persona['error']}")
+            return jsonify(persona), 500
+        
+        # Save persona to SQLite
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("INSERT INTO personas (name, data, timestamp) VALUES (?, ?, ?)",
+                  (persona.get('Name', 'Unnamed Persona'), json.dumps(persona), datetime.now().isoformat()))
+        conn.commit()
+        conn.close()
+        
+        logging.info(f"Persona saved to database")
+        
+        return jsonify(persona), 200
+    except Exception as e:
+        logging.error(f"Error in generate_persona: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
-@app.route('/update_persona', methods=['POST'])
-def update_persona():
-    updated_persona = request.json['persona']
+@app.route('/get_personas', methods=['GET'])
+def get_personas():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT id, name, timestamp FROM personas ORDER BY timestamp DESC")
+    personas = [{'id': row[0], 'name': row[1], 'timestamp': row[2]} for row in c.fetchall()]
+    conn.close()
     
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    filename = f"persona_{timestamp}.json"
-    file_path = os.path.join(PERSONAS_FOLDER, filename)
-    
-    with open(file_path, 'w') as f:
-        json.dump(updated_persona, f)
-    
-    return jsonify({'message': 'Persona updated and saved successfully', 'filename': filename})
+    return jsonify({'personas': personas})
 
-@app.route('/add_content', methods=['POST'])
-def add_content():
-    new_content = request.json['content']
+@app.route('/load_persona/<persona_id>', methods=['GET'])
+def load_persona(persona_id):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT data FROM personas WHERE id = ?", (persona_id,))
+    result = c.fetchone()
+    conn.close()
     
-    filename = f"new_content_{len(os.listdir(app.config['DOCUMENT_FOLDER']))}.txt"
-    file_path = os.path.join(app.config['DOCUMENT_FOLDER'], filename)
-    with open(file_path, 'w') as f:
-        f.write(new_content)
-    
-    ollama_agent.add_to_db(file_path)
-    
-    prompt = f"""Update the persona based on this new information: {new_content}"""
-    updated_persona = ollama_agent.instruct(prompt)
-    
-    return jsonify(updated_persona)
-
-@app.route('/get_memory', methods=['GET'])
-def get_memory():
-    return jsonify({'memory': ollama_agent.memory})
-
-@app.route('/save_version', methods=['POST'])
-def save_version():
-    persona = request.json['persona']
-    description = request.json.get('description', 'No description provided')
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    filename = f"persona_{timestamp}.json"
-    file_path = os.path.join(PERSONAS_FOLDER, filename)
-    
-    version_data = {
-        'persona': persona,
-        'description': description,
-        'timestamp': timestamp
-    }
-    
-    with open(file_path, 'w') as f:
-        json.dump(version_data, f)
-    
-    return jsonify({'message': 'Version saved successfully', 'filename': filename})
-
-@app.route('/get_versions', methods=['GET'])
-def get_versions():
-    versions = []
-    for filename in os.listdir(PERSONAS_FOLDER):
-        if filename.endswith('.json'):
-            file_path = os.path.join(PERSONAS_FOLDER, filename)
-            with open(file_path, 'r') as f:
-                version_data = json.load(f)
-            versions.append({
-                'id': filename,
-                'description': version_data.get('description', 'No description available'),
-                'timestamp': version_data.get('timestamp', 'Unknown')
-            })
-    return jsonify({'versions': versions})
-
-@app.route('/load_version/<version_id>', methods=['GET'])
-def load_version(version_id):
-    file_path = os.path.join(PERSONAS_FOLDER, version_id)
-    if os.path.exists(file_path):
-        with open(file_path, 'r') as f:
-            version_data = json.load(f)
-        return jsonify({'persona': version_data['persona']})
+    if result:
+        return jsonify({'persona': json.loads(result[0])})
     else:
-        return jsonify({'error': 'Version not found'}), 404
+        return jsonify({'error': 'Persona not found'}), 404
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

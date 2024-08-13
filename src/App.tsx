@@ -1,13 +1,21 @@
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import HomePage from './components/HomePage';
 import InputPage from './components/InputPage';
+import Input1 from './components/Input1';
+import Input2 from './components/Input2';
+import Input3 from './components/Input3';
+import Input4 from './components/Input4';
 import GeneratePage from './components/GeneratePage';
+import ViewPage from './components/ViewPage';
+import ExportPage from './components/GeneratePage';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
+
+
 
 function NavBar() {
   return (
@@ -44,7 +52,13 @@ function AppContent() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/input" element={<InputPage />} />
+          <Route path="/input1" element={<Input1 />} />
+          <Route path="/input2" element={<Input2 />} />
+          <Route path="/input3" element={<Input3 />} />
+          <Route path="/input4" element={<Input4 />} />
           <Route path="/generate" element={<GeneratePage />} />
+          <Route path="/view" element={<ViewPage />} />
+          <Route path="/export" element={<ExportPage />} />
         </Routes>
       </main>
       <footer className="py-6 md:px-8 md:py-0">
@@ -58,10 +72,14 @@ function AppContent() {
   );
 }
 
+import { FormProvider } from '../FormContext';
+
 function App() {
   return (
     <Router>
-      <AppContent />
+      <FormProvider>
+        <AppContent />
+      </FormProvider>
     </Router>
   );
 }
