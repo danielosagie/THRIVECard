@@ -1,3 +1,4 @@
+# app.py
 from flask import Flask, request, jsonify, Response, stream_with_context
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
@@ -6,31 +7,28 @@ import json
 from datetime import datetime
 import sqlite3
 from dotenv import load_dotenv
-from langchain_chroma import Chroma
 from agent import Agent
 import logging
-
+import threading
+from queue import Queue
 
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 
-OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')
-MODEL_NAME = os.getenv('MODEL_NAME', 'llama3')
-
-app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}})
+OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL')
+MODEL_NAME = os.getenv('MODEL_NAME')
 
 BASE_DIR = 'user_data'
 CHROMA_DIR = os.path.join(BASE_DIR, 'chroma_db')
 DB_PATH = os.path.join(BASE_DIR, 'local_db.sqlite')
 
-# Ensure the directory exists
 os.makedirs(CHROMA_DIR, exist_ok=True)
 
-chroma_client = Chroma(persist_directory=CHROMA_DIR)
-
 agent = Agent("MainAgent", CHROMA_DIR, OLLAMA_BASE_URL, MODEL_NAME)
+
+app = Flask(__name__)
+CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}})
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -38,27 +36,12 @@ def init_db():
     c.execute('''CREATE TABLE IF NOT EXISTS personas
                  (id INTEGER PRIMARY KEY, name TEXT, data JSON, timestamp TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS documents
-                 (id INTEGER PRIMARY KEY, filename TEXT, content TEXT, timestamp TEXT)''')
+                 (id INTEGER PRIMARY KEY, filename TEXT UNIQUE, content TEXT, timestamp TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS streaming_responses
+                 (id INTEGER PRIMARY KEY, content TEXT, timestamp TEXT)''')
     conn.commit()
     conn.close()
 
-def create_or_update_db():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    
-    # Check if 'personas' table exists and has the correct schema
-    c.execute("CREATE TABLE IF NOT EXISTS personas (id INTEGER PRIMARY KEY, name TEXT, data JSON, timestamp TEXT)")
-    
-    # Check if 'documents' table exists and has the correct schema
-    c.execute("CREATE TABLE IF NOT EXISTS documents (id INTEGER PRIMARY KEY, filename TEXT, content TEXT, timestamp TEXT)")
-    
-    conn.commit()
-    conn.close()
-
-# Call this function before starting the Flask app
-create_or_update_db()
-
-# Initialize folders and database
 os.makedirs(BASE_DIR, exist_ok=True)
 init_db()
 
@@ -68,7 +51,8 @@ def home():
 
 @app.route('/test', methods=['GET'])
 def test():
-    return jsonify({"message": "Flask server is running"}), 200
+    output = agent.llm.invoke("Come up with 10 names for a song about parrots")
+    return jsonify({"message": f"{output}"}), 200
 
 @app.route('/get_input_documents', methods=['GET'])
 def get_input_documents():
@@ -82,61 +66,68 @@ def get_input_documents():
 @app.route('/update_document', methods=['POST'])
 def update_document():
     data = request.json
-    filename = data['filename']
+    filename = secure_filename(data['filename'])
     content = data['content']
     
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("UPDATE documents SET content = ?, timestamp = ? WHERE filename = ?",
-              (content, datetime.now().isoformat(), filename))
-    if c.rowcount == 0:
-        c.execute("INSERT INTO documents (filename, content, timestamp) VALUES (?, ?, ?)",
-                  (filename, content, datetime.now().isoformat()))
+    c.execute('''INSERT OR REPLACE INTO documents (filename, content, timestamp)
+                 VALUES (?, ?, ?)''', (filename, content, datetime.now().isoformat()))
     conn.commit()
     conn.close()
     
-    # Update Chroma DB
-    agent.add_to_db(content, filename)
+    threading.Thread(target=agent.update_chroma_db, args=(content, filename)).start()
     
-    return jsonify({'message': f'Document {filename} updated successfully'})
+    return jsonify({'message': f'Document {filename} updated successfully. Chroma DB update started.'})
 
-@app.route('/generate_persona', methods=['POST'])
+def stream_generator(input_text, documents_content):
+    queue = Queue()
+    def callback(token):
+        queue.put(token)
+
+    threading.Thread(target=agent.generate_stream, args=(input_text, documents_content, callback)).start()
+
+    while True:
+        token = queue.get()
+        if token is None:
+            break
+        yield f"data: {json.dumps({'token': token})}\n\n"
+
+@app.route('/api/generate_persona_stream', methods=['POST'])
+def generate_persona_stream():
+    data = request.json
+    input_text = data['input']
+    selected_documents = data.get('selected_documents', [])
+
+    relevant_docs = agent.get_relevant_documents(input_text, k=5)
+    all_docs = selected_documents + relevant_docs
+    documents_content = ' '.join(all_docs)
+
+    return Response(stream_with_context(stream_generator(input_text, documents_content)),
+                    content_type='text/event-stream')
+
+@app.route('/api/generate_persona', methods=['POST'])
 def generate_persona():
     try:
-        input_text = request.json['input']
-        selected_documents = request.json.get('selected_documents', [])
-        
-        documents_content = []
-        if selected_documents:
-            conn = sqlite3.connect(DB_PATH)
-            c = conn.cursor()
-            placeholders = ','.join(['?'] * len(selected_documents))
-            c.execute(f"SELECT content FROM documents WHERE filename IN ({placeholders})", selected_documents)
-            documents_content = [row[0] for row in c.fetchall() if row[0]]
-            conn.close()
+        data = request.json
+        input_text = data['input']
+        selected_documents = data.get('selected_documents', [])
 
-        prompt = f"""Generate a detailed persona based on this input and the following documents: {input_text}. 
-        Documents content: {' '.join(documents_content)}
-        Include categories such as Education, Experience, Skills, Strengths, Goals, and Values. Format the response as a JSON object."""
+        relevant_docs = agent.get_relevant_documents(input_text, k=5)
+        all_docs = selected_documents + relevant_docs
+        documents_content = ' '.join(all_docs)
+
+        persona_response = agent.generate(input_text, documents_content)
         
-        logging.info(f"Sending prompt to agent: {prompt}")
-        persona = agent.generate(prompt)
-        
-        logging.info(f"Received persona from agent: {persona}")
-        
-        if isinstance(persona, dict) and 'error' in persona:
-            logging.error(f"Error generating persona: {persona['error']}")
-            return jsonify(persona), 500
-        
-        # Save persona to SQLite
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute("INSERT INTO personas (name, data, timestamp) VALUES (?, ?, ?)",
-                  (persona.get('Name', 'Unnamed Persona'), json.dumps(persona), datetime.now().isoformat()))
-        conn.commit()
-        conn.close()
-        
-        logging.info(f"Persona saved to database")
+        try:
+            persona = json.loads(persona_response)
+        except json.JSONDecodeError:
+            return jsonify({"error": "Invalid persona format"}), 500
+
+        with sqlite3.connect(DB_PATH) as conn:
+            c = conn.cursor()
+            c.execute("INSERT INTO personas (name, data, timestamp) VALUES (?, ?, ?)",
+                      (persona.get('Name', 'Unnamed Persona'), json.dumps(persona), datetime.now().isoformat()))
         
         return jsonify(persona), 200
     except Exception as e:

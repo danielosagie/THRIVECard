@@ -1,0 +1,5 @@
+[
+    "Software engineers design and develop computer software.",
+    "A good software engineer needs problem-solving skills.",
+    "Programming languages like Python and Java are essential for software engineering."
+]

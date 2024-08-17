@@ -7,7 +7,7 @@ import Input3 from './components/Input3';
 import Input4 from './components/Input4';
 import GeneratePage from './components/GeneratePage';
 import ViewPage from './components/ViewPage';
-import ExportPage from './components/GeneratePage';
+import ExportPage from './components/ExportPage';
 import {
   Popover,
   PopoverContent,

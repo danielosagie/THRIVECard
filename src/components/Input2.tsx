@@ -1,115 +1,161 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import axios from 'axios';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
 
-export default function InputPage2() {
-  const navigate = useNavigate();
-  const [formData, setFormData] = useState({
-    education: '',
-    workExperiences: '',
-    volunteerExperiences: '',
-    lifeExperiences: '',
-    skills: '',
-  });
+const API_BASE_URL = 'http://localhost:5000';
+
+const pages = [
+  {
+    title: "Introduction & Career Goals",
+    description: "Tell us about yourself and your career goals",
+    fields: [
+      { name: "firstName", label: "First Name", type: "input" },
+      { name: "lastName", label: "Last Name", type: "input" },
+      { name: "currentGoals", label: "What are your current career goals? (Next 1-2 years)", type: "textarea" },
+      { name: "longTermGoals", label: "What are your long-term career goals? (5+ years)", type: "textarea" },
+    ]
+  },
+  {
+    title: "Share Your Experiences & Skills",
+    description: "Tell us about your experiences and skills",
+    fields: [
+      { name: "professionalExperience", label: "Describe your professional experience", type: "textarea" },
+      { name: "volunteerExperience", label: "Describe any volunteer experience", type: "textarea" },
+      { name: "skills", label: "List your key skills", type: "textarea" },
+      { name: "achievements", label: "Describe your notable achievements", type: "textarea" },
+      { name: "challenges", label: "Describe any significant challenges you've overcome", type: "textarea" },
+    ]
+  },
+  {
+    title: "Preferences",
+    description: "Tell us about your preferences",
+    fields: [
+      { name: "workPreferences", label: "Describe your ideal work environment", type: "textarea" },
+    ]
+  }
+];
+
+export default function MultiPageForm() {
+  const [currentPage, setCurrentPage] = useState(0);
+  const [formData, setFormData] = useState({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    const savedData = localStorage.getItem('inputPage2Data');
-    if (savedData) {
-      setFormData(JSON.parse(savedData));
-    }
+    fetchData();
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem('inputPage2Data', JSON.stringify(formData));
-  }, [formData]);
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+  const fetchData = async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/get_input_documents`);
+      if (response.data) {
+        const mergedData = {};
+        Object.values(response.data).forEach(content => {
+          Object.assign(mergedData, JSON.parse(content));
+        });
+        setFormData(mergedData);
+      }
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    }
   };
 
-  return (
-    <div className="flex flex-col items-center w-full bg-white">
-      <nav className="w-full px-4 py-5 flex justify-between items-center bg-white">
-        <Link to="/" className="text-sm text-muted-foreground">&larr; Back to Home</Link>
-        <div className="flex items-center">
-          <div className="flex items-center space-x-8">
-            <div className="flex items-center justify-center w-8 h-8 text-white bg-[#1a202c] rounded-full mr-2">1</div>
-            <span className="font-medium text-[#1a202c] mr-10">Input Information</span>
-            <div className="flex items-center justify-center w-8 h-8 text-[#cbd5e0] bg-[#e2e8f0] rounded-full mr-2">2</div>
-            <span className="font-medium text-[#cbd5e0] mr-10">Generate & Edit</span>
-            <div className="flex items-center justify-center w-8 h-8 text-[#cbd5e0] bg-[#e2e8f0] rounded-full mr-2">3</div>
-            <span className="font-medium text-[#cbd5e0]">Save & Export</span>
-          </div>
-        </div>
-        <div></div>
-      </nav>
-      <div className="flex flex-col items-center w-full max-w-10xl p-8 bg-gray-100 rounded-lg shadow-md mt-8 mx-4" style={{ margin: '20px', width: 'calc(100% - 40px)', height: 'calc(80vh - 40px)' }}>
-        <div className="flex flex-col p-8 bg-gray rounded-lg justify-center h-screen w-full max-w-5xl">
-          <h2 className="mb-4 text-xl font-semibold">2. Tell us more about your experiences (10-15 minutes)</h2>
-          <p className="mb-4 text-gray-600">This form is here to let us get to know you as best we can. We want to know all of your experiences, skills, and aspirations as a military spouse.</p>
-          
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="education">Education</Label>
-              <Textarea 
-                id="education" 
-                name="education" 
-                value={formData.education} 
-                onChange={handleInputChange}
-                placeholder="Enter Information about you"
-              />
-            </div>
-            <div>
-              <Label htmlFor="workExperiences">Work Experiences</Label>
-              <Textarea 
-                id="workExperiences" 
-                name="workExperiences" 
-                value={formData.workExperiences} 
-                onChange={handleInputChange}
-                placeholder="Enter your information"
-              />
-            </div>
-            <div>
-              <Label htmlFor="volunteerExperiences">Volunteer Experiences</Label>
-              <Textarea 
-                id="volunteerExperiences" 
-                name="volunteerExperiences" 
-                value={formData.volunteerExperiences} 
-                onChange={handleInputChange}
-                placeholder="Enter your information"
-              />
-            </div>
-            <div>
-              <Label htmlFor="lifeExperiences">Life Experiences</Label>
-              <Textarea 
-                id="lifeExperiences" 
-                name="lifeExperiences" 
-                value={formData.lifeExperiences} 
-                onChange={handleInputChange}
-                placeholder="Enter your information"
-              />
-            </div>
-            <div>
-              <Label htmlFor="skills">Skills</Label>
-              <Textarea 
-                id="skills" 
-                name="skills" 
-                value={formData.skills} 
-                onChange={handleInputChange}
-                placeholder="Enter your information"
-              />
-            </div>
-          </div>
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prevData => ({
+      ...prevData,
+      [name]: value
+    }));
+  };
 
-          <div className="flex justify-between mt-6">
-            <Button onClick={() => navigate('/input1')}>Back</Button>
-            <Button onClick={() => navigate('/input3')}>Continue</Button>
-          </div>
-        </div>
-      </div>
+  const handleContinue = () => {
+    if (currentPage < pages.length - 1) {
+      setCurrentPage(currentPage + 1);
+    }
+  };
+
+  const handleBack = () => {
+    if (currentPage > 0) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
+
+  const handleFinalSubmit = async () => {
+    setIsSubmitting(true);
+    try {
+      const date = new Date().toISOString().split('T')[0];
+      const fileName = `${formData.firstName}_${formData.lastName}_${date}.txt`;
+      
+      const formattedContent = Object.entries(formData)
+        .map(([key, value]) => `${key}: ${value}`)
+        .join('\n\n');
+
+      await axios.post(`${API_BASE_URL}/update_document`, {
+        filename: fileName,
+        content: formattedContent
+      });
+      
+      alert('All data saved successfully!');
+      // Optionally, reset the form or redirect the user
+    } catch (error) {
+      console.error('Error saving data:', error);
+      alert('Error saving data. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const currentPageData = pages[currentPage];
+
+  return (
+    <div className="container mx-auto px-4 py-8">
+      <Card className="max-w-2xl mx-auto">
+        <CardHeader>
+          <CardTitle>{currentPageData.title}</CardTitle>
+          <CardDescription>{currentPageData.description}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={(e) => e.preventDefault()}>
+            <div className="grid w-full items-center gap-4">
+              {currentPageData.fields.map((field) => (
+                <div key={field.name} className="flex flex-col space-y-1.5">
+                  <Label htmlFor={field.name}>{field.label}</Label>
+                  {field.type === 'input' ? (
+                    <Input
+                      id={field.name}
+                      name={field.name}
+                      value={formData[field.name] || ''}
+                      onChange={handleInputChange}
+                    />
+                  ) : (
+                    <Textarea
+                      id={field.name}
+                      name={field.name}
+                      value={formData[field.name] || ''}
+                      onChange={handleInputChange}
+                    />
+                  )}
+                </div>
+              ))}
+              <div className="flex justify-between mt-4">
+                {currentPage > 0 && (
+                  <Button onClick={handleBack} variant="outline">Back</Button>
+                )}
+                {currentPage < pages.length - 1 ? (
+                  <Button onClick={handleContinue}>Continue</Button>
+                ) : (
+                  <Button onClick={handleFinalSubmit} disabled={isSubmitting}>
+                    {isSubmitting ? 'Submitting...' : 'Submit All Data'}
+                  </Button>
+                )}
+              </div>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }

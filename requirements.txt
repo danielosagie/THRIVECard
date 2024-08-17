@@ -4,3 +4,4 @@ langchain==0.2.13
 langchain_chroma==0.1.2
 langchain_community==0.2.12
 Werkzeug==3.0.3
+langchain-ollama
