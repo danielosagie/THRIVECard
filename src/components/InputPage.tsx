@@ -101,13 +101,20 @@ export default function InputPage() {
             Your privacy is our priority: All data is stored locally and never shared or tracked.
           </p>
           <div className="flex mt-6 space-x-4">
-            <Button className="text-white bg-slate-900">Learn More about THRIVE Toolkit</Button>
-            <GradientButton 
-              gradient="linear-gradient(to right, #70e2ff, #cd93ff)" 
-              onClick={() => console.log('Start Button Clicked')}
-            >
-              Get Started
-            </GradientButton>
+    
+            <Link to="/">
+              <Button className="text-white bg-slate-900">Learn More about THRIVE Toolkit</Button>
+            </Link>
+
+            <Link to="/input1">
+              <GradientButton 
+                gradient="linear-gradient(to right, #70e2ff, #cd93ff)" 
+                onClick={() => console.log('Start Button Clicked')}
+              >
+                Get Started
+              </GradientButton>
+            </Link>
+          
           </div>
         </div>
       </div>
