@@ -4,8 +4,10 @@ import axios from 'axios';
 import { Button } from "@/components/ui/button";
 import { Upload, X } from "lucide-react";
 
-const FileUpload = ({ 
-  onFilesChange, 
+const API_BASE_URL = 'http://localhost:5989';
+
+const FileUpload = ({
+  onFilesChange,
   dropzoneText = "Drag & drop files here, or click to select files",
   uploadedFilesText = "Uploaded Files:",
   removeFileText = "Remove"
@@ -18,7 +20,7 @@ const FileUpload = ({
 
   const fetchUploadedFiles = async () => {
     try {
-      const response = await axios.get('http://localhost:5000/get_uploaded_files');
+      const response = await axios.get(`${API_BASE_URL}/get_uploaded_files`);
       setUploadedFiles(response.data.files);
       onFilesChange(response.data.files);
     } catch (error) {
@@ -30,16 +32,16 @@ const FileUpload = ({
     const uploadPromises = acceptedFiles.map(async (file) => {
       const formData = new FormData();
       formData.append('file', file);
-  
+
       try {
-        const response = await axios.post('http://localhost:5000/upload', formData);
+        const response = await axios.post(`${API_BASE_URL}/upload_file`, formData);
         return response.data.filename;
       } catch (error) {
         console.error(`Error uploading file ${file.name}:`, error);
         throw error;
       }
     });
-  
+
     try {
       await Promise.all(uploadPromises);
       fetchUploadedFiles();
@@ -50,7 +52,7 @@ const FileUpload = ({
 
   const removeFile = async (filename) => {
     try {
-      await axios.post('http://localhost:5000/remove_file', { filename });
+      await axios.post(`${API_BASE_URL}/remove_file`, { filename });
       fetchUploadedFiles();
     } catch (error) {
       console.error('Error removing file:', error);

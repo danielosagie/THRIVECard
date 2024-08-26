@@ -10,204 +10,169 @@ import GradientButton from '@/components/ui/gradientbutton';
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import FileUpload from '@/components/ui/fileupload'; // Adjust the import path as needed
+import FileUpload from '@/components/ui/fileupload';
+import { StreamingEditableTCard } from "@/components/ui/tcard"
 
-const API_BASE_URL = 'http://localhost:5000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
-const pages = [
+interface FormData {
+  [key: string]: string | File[] | undefined;
+  firstName?: string;
+  lastName?: string;
+  currentGoals?: string;
+  longTermGoals?: string;
+  professionalExperience?: string;
+  volunteerExperience?: string;
+  skills?: string;
+  achievements?: string;
+  challenges?: string;
+  workPreferences?: string;
+  experienceLevel?: string;
+  uploadedFiles?: File[];
+}
+
+interface Field {
+  name: string;
+  label: string;
+  type: 'input' | 'textarea';
+  tooltip: string;
+  placeholder: string;
+  subtext?: string;
+}
+
+
+interface Page {
+  title: string;
+  navTitle: string;
+  description: string;
+  fields: Field[];
+}
+
+const pages: Page[] = [
   {
     title: "Personal Details",
     navTitle: "Introduction",
     description: "Tell us about yourself and your career goals",
     fields: [
-      { name: "firstName", label: "First Name", type: "input", tooltip: "Enter your legal first name" },
-      { name: "lastName", label: "Last Name", type: "input", tooltip: "Enter your legal last name" },
-      { name: "currentGoals", label: "What are your current career goals? (Next 1-2 years)", type: "textarea", tooltip: "Be specific about what you want to achieve in the near future" },
-      { name: "longTermGoals", label: "What are your long-term career goals? (5+ years)", type: "textarea", tooltip: "Think about where you want your career to be in 5 years or more" },
+      { name: "firstName", label: "First Name", type: "input", tooltip: "Enter your legal first name", placeholder: "Enter your first name" },
+      { name: "lastName", label: "Last Name", type: "input", tooltip: "Enter your legal last name", placeholder: "Enter your last name" },
+      { name: "currentGoals", label: "What are your current career goals? (Next 1-2 years)", type: "textarea", tooltip: "Be specific about what you want to achieve in the near future", placeholder: "Describe your current career goals" },
+      { name: "longTermGoals", label: "What are your long-term career goals? (5+ years)", type: "textarea", tooltip: "Think about where you want your career to be in 5 years or more", placeholder: "Describe your long-term career goals" },
     ],
-    layout: (fields, handleInputChange, formData) => (
-      <div className="grid grid-cols-1 gap-4">
-        <div className="flex gap-10">
-          {fields.slice(0, 2).map(field => (
-            <div key={field.name} className="flex-1">
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Label htmlFor={field.name} className="flex items-center">
-                      {field.label} <span className="ml-1 text-gray-400">ⓘ</span>
-                    </Label>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>{field.tooltip}</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <Input
-                id={field.name}
-                name={field.name}
-                value={formData[field.name] || ''}
-                onChange={handleInputChange}
-              />
-            </div>
-          ))}
-        </div>
-        {fields.slice(2).map(field => (
-          <div key={field.name}>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Label htmlFor={field.name} className="flex items-center">
-                    {field.label} <span className="ml-1 text-gray-400">ⓘ</span>
-                  </Label>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{field.tooltip}</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            <Textarea
-              id={field.name}
-              name={field.name}
-              value={formData[field.name] || ''}
-              onChange={handleInputChange}
-            />
-          </div>
-        ))}
-      </div>
-    )
   },
   {
     title: "Experience & Skills",
     navTitle: "Background",
     description: "Tell us about your experiences and skills",
     fields: [
-      { name: "professionalExperience", label: "Describe your professional experience", type: "textarea", tooltip: "Include relevant work history, internships, and projects" },
-      { name: "volunteerExperience", label: "Describe any volunteer experience", type: "textarea", tooltip: "Highlight any unpaid work that demonstrates your skills and values" },
-      { name: "skills", label: "List your key skills", type: "textarea", tooltip: "Include both technical and soft skills" },
-      { name: "achievements", label: "Describe your notable achievements", type: "textarea", tooltip: "Highlight accomplishments that showcase your abilities" },
-      { name: "challenges", label: "Describe any significant challenges you've overcome", type: "textarea", tooltip: "Explain how you've grown from difficult experiences", subtext: "This helps us understand your resilience and problem-solving abilities." },
+      { name: "professionalExperience", label: "Describe your professional experience", type: "textarea", tooltip: "Include relevant work history, internships, and projects", placeholder: "Enter your professional experience" },
+      { name: "volunteerExperience", label: "Describe any volunteer experience", type: "textarea", tooltip: "Highlight any unpaid work that demonstrates your skills and values", placeholder: "Enter your volunteer experience" },
+      { name: "skills", label: "List your key skills", type: "textarea", tooltip: "Include both technical and soft skills", placeholder: "List your key skills" },
+      { name: "achievements", label: "Describe your notable achievements", type: "textarea", tooltip: "Highlight accomplishments that showcase your abilities", placeholder: "Describe your achievements" },
+      { name: "challenges", label: "Describe any significant challenges you've overcome", type: "textarea", tooltip: "Explain how you've grown from difficult experiences", subtext: "This helps us understand your resilience and problem-solving abilities.", placeholder: "Describe challenges you've overcome" },
     ],
-    layout: (fields, handleInputChange, formData, handleExperienceChange, handleFilesChange) => (
-      <div className="grid grid-cols-1 gap-6">
-        <div>
-          <h3 className="text-lg font-semibold mb-2">Upload Your Resume</h3>
-          <FileUpload 
-            onFilesChange={handleFilesChange}
-            dropzoneText="Drag & drop your resume here, or click to select file"
-            uploadedFilesText="Uploaded Resume:"
-            removeFileText="Remove"
-          />
-          <p className="text-center mt-2">OR</p>
-        </div>
-        <div>
-          <h3 className="text-lg font-semibold mb-2">Select your experience level:</h3>
-          <Select onValueChange={(value) => handleExperienceChange(value)}>
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select experience level" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="entry">Entry Level</SelectItem>
-              <SelectItem value="mid">Mid Level</SelectItem>
-              <SelectItem value="senior">Senior Level</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="border-t border-b py-4 my-4">
-          {fields.map((field) => (
-            <div key={field.name} className="mb-4">
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Label htmlFor={field.name} className="flex items-center">
-                      {field.label} <span className="ml-1 text-gray-400">ⓘ</span>
-                    </Label>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>{field.tooltip}</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <Textarea
-                id={field.name}
-                name={field.name}
-                value={formData[field.name] || ''}
-                onChange={handleInputChange}
-              />
-              {field.subtext && (
-                <p className="text-sm text-gray-500 mt-1">{field.subtext}</p>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-    )
   },
   {
     title: "Work Preferences",
     navTitle: "Preferences",
-    description: "Tell us about your preferences",
+    description: "Tell us about your ideal work environment",
     fields: [
-      { name: "workPreferences", label: "Describe your ideal work environment", type: "textarea", tooltip: "Consider factors like work-life balance, company culture, and job responsibilities" },
-    ]
+      { 
+        name: "workPreferences", 
+        label: "Describe your ideal work environment and job. What factors are most important to you in a job or workplace?", 
+        type: "textarea", 
+        tooltip: "Consider factors like work-life balance, company culture, job responsibilities, work schedule, company size, industry, career growth opportunities, and anything else that's important to you.",
+        placeholder: "Describe your ideal work environment and important job factors"
+      },
+    ],
   }
 ];
 
 export default function AdvancedMultiPageForm() {
+  const [formData, setFormData] = useState<FormData>({})
   const [currentPage, setCurrentPage] = useState(0);
-  const [formData, setFormData] = useState({});
+  const [pageProgress, setPageProgress] = useState<number[]>([0, 0]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [progress, setProgress] = useState(0);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedPersona, setGeneratedPersona] = useState("");
+  const [uploadedFiles, setUploadedFiles] = useState<{ id: number; filename: string }[]>([]);
+  const [selectedFileIds, setSelectedFileIds] = useState<number[]>([]);
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetchData();
+    const loadedData = loadFromLocalStorage();
+    if (loadedData) {
+      setFormData(loadedData);
+      updateProgress(loadedData);
+    } else {
+      fetchData();
+    }
   }, []);
+
+  useEffect(() => {
+    saveToLocalStorage(formData);
+    updateProgress(formData);
+  }, [formData]);
 
   const fetchData = async () => {
     try {
       const response = await axios.get(`${API_BASE_URL}/get_input_documents`);
       if (response.data) {
-        const mergedData = {};
-        Object.values(response.data).forEach(content => {
-          Object.assign(mergedData, JSON.parse(content));
+        const mergedData: FormData = {};
+        Object.values(response.data).forEach((content: unknown) => {
+          if (typeof content === 'string') {
+            Object.assign(mergedData, JSON.parse(content));
+          }
         });
-        setFormData(mergedData);
+        setFormData(prevData => ({...prevData, ...mergedData}));
       }
     } catch (error) {
       console.error('Error fetching data:', error);
+      // You might want to show an error message to the user here
     }
   };
 
-  const handleInputChange = (e) => {
+  const loadFromLocalStorage = (): FormData | null => {
+    const savedData = localStorage.getItem('advancedMultiPageFormData');
+    return savedData ? JSON.parse(savedData) as FormData : null;
+  };
+
+  const saveToLocalStorage = (data: FormData) => {
+    localStorage.setItem('advancedMultiPageFormData', JSON.stringify(data));
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prevData => ({
       ...prevData,
       [name]: value
     }));
-    updateProgress();
+  };
+  
+  const updateProgress = (data: FormData) => {
+    const newPageProgress = pages.slice(0, 2).map((page) => {
+      const pageFields = page.fields;
+      const filledFields = pageFields.filter(field => {
+        const value = data[field.name];
+        return typeof value === 'string' && value.trim().length > 0;
+      }).length;
+      return (filledFields / pageFields.length) * 100;
+    });
+    setPageProgress(newPageProgress);
   };
 
-  const handleExperienceChange = (value) => {
+  const handleExperienceChange = (value: string) => {
     setFormData(prevData => ({
       ...prevData,
       experienceLevel: value
     }));
-    updateProgress();
   };
 
-  const handleFilesChange = (files) => {
+  const handleFilesChange = (files: File[]) => {
     setFormData(prevData => ({
       ...prevData,
       uploadedFiles: files
     }));
-    updateProgress();
-  };
-
-  const updateProgress = () => {
-    const totalFields = pages.reduce((acc, page) => acc + page.fields.length, 0);
-    const filledFields = Object.values(formData).filter(value => value && value.length > 0).length;
-    const newProgress = (filledFields / totalFields) * 100;
-    setProgress(newProgress);
   };
 
   const handleContinue = () => {
@@ -222,40 +187,161 @@ export default function AdvancedMultiPageForm() {
     }
   };
 
-  const handleFinalSubmit = async () => {
-    setIsSubmitting(true);
-    try {
-      const date = new Date().toISOString().split('T')[0];
-      const fileName = `${formData.firstName}_${formData.lastName}_${date}.txt`;
-      
-      const formattedContent = Object.entries(formData)
-        .map(([key, value]) => `${key}: ${value}`)
-        .join('\n\n');
-
-      await axios.post(`${API_BASE_URL}/update_document`, {
-        filename: fileName,
-        content: formattedContent
-      });
-      
-      alert('All data saved successfully!');
-      navigate('/summary');
-    } catch (error) {
-      console.error('Error saving data:', error);
-      alert('Error saving data. Please try again.');
-    } finally {
-      setIsSubmitting(false);
+  const handleFileUpload = async (files: File[]) => {
+    for (const file of files) {
+      const formData = new FormData();
+      formData.append('file', file);
+  
+      try {
+        const response = await axios.post(`${API_BASE_URL}/upload_file`, formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+        console.log('File uploaded successfully:', response.data);
+        // Update your state or UI as needed
+      } catch (error) {
+        console.error('Error uploading file:', error);
+        if (axios.isAxiosError(error) && error.response) {
+          console.error('Server response:', error.response.data);
+        }
+        // Handle the error (e.g., show an error message to the user)
+      }
     }
   };
+  
+  const handleFileSelection = (fileId: number) => {
+    setSelectedFileIds(prev => 
+      prev.includes(fileId) 
+        ? prev.filter(id => id !== fileId) 
+        : [...prev, fileId]
+    );
+  };
 
-  const currentPageData = pages[currentPage];
+  const handleFinalSubmit = async () => {
+    setIsGenerating(true);
+    let fullResponse = "";
+    try {
+      console.log("Sending request to:", `${API_BASE_URL}/generate_persona_stream`);
+      console.log("Request payload:", JSON.stringify({
+        input: formData,
+        selected_documents: selectedFileIds
+      }));
+  
+      const response = await fetch(`${API_BASE_URL}/generate_persona_stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          input: formData,
+          selected_documents: selectedFileIds
+        }),
+      });
+  
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+  
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+  
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+  
+          const chunk = decoder.decode(value);
+          console.log("Received chunk:", chunk);
+  
+          const lines = chunk.split('\n\n');
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = JSON.parse(line.slice(6));
+              console.log("Parsed data:", data);
+              if (data.complete) {
+                setIsGenerating(false);
+                console.log("Generation complete. Persona ID:", data.persona_id);
+                navigate('/summary', { state: { personaId: data.persona_id } });
+              } else if (data.token) {
+                fullResponse += data.token;
+                setGeneratedPersona(fullResponse);
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error generating persona:', error);
+      setIsGenerating(false);
+      alert(`Error generating persona: ${error.message}`);
+    }
+  };
+  
 
   const renderFields = () => {
-    if (currentPageData.layout) {
-      return currentPageData.layout(currentPageData.fields, handleInputChange, formData, handleExperienceChange, handleFilesChange);
-    }
-
+    const currentPageData = pages[currentPage];
     return (
       <div className="grid w-full items-center gap-4">
+        {currentPage === 1 && (
+          <>
+            <div>
+              <h3 className="text-lg font-semibold mb-2">Upload Your Resume</h3>
+              <FileUpload 
+                onFilesChange={handleFileUpload}
+                dropzoneText="Drag & drop your resume here, or click to select file"
+                uploadedFilesText="Uploaded Resume:"
+                removeFileText="Remove"
+                {...uploadedFiles.length > 0 && (
+                  <div>
+                    <h3 className="text-lg font-semibold mb-2">Select files for generation:</h3>
+                    {uploadedFiles.map(file => (
+                      <div key={file.id} className="flex items-center">
+                        <input 
+                          type="checkbox" 
+                          id={`file-${file.id}`} 
+                          checked={selectedFileIds.includes(file.id)}
+                          onChange={() => handleFileSelection(file.id)}
+                        />
+                        <label htmlFor={`file-${file.id}`} className="ml-2">{file.filename}</label>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              />
+              {uploadedFiles.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-semibold mb-2">Select files for generation:</h3>
+                  {uploadedFiles.map(file => (
+                    <div key={file.id} className="flex items-center">
+                      <input 
+                        type="checkbox" 
+                        id={`file-${file.id}`} 
+                        checked={selectedFileIds.includes(file.id)}
+                        onChange={() => handleFileSelection(file.id)}
+                      />
+                      <label htmlFor={`file-${file.id}`} className="ml-2">{file.filename}</label>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-center mt-2">OR</p>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold mb-2">Select your experience level:</h3>
+              <Select onValueChange={handleExperienceChange} value={formData.experienceLevel}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select experience level" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="entry">Entry Level</SelectItem>
+                  <SelectItem value="mid">Mid Level</SelectItem>
+                  <SelectItem value="senior">Senior Level</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </>
+        )}
         {currentPageData.fields.map((field) => (
           <div key={field.name} className="flex flex-col space-y-1.5">
             <TooltipProvider>
@@ -274,15 +360,19 @@ export default function AdvancedMultiPageForm() {
               <Input
                 id={field.name}
                 name={field.name}
-                value={formData[field.name] || ''}
+                value={formData[field.name] as string || ''}
                 onChange={handleInputChange}
+                placeholder={field.placeholder}
+                className="p-2"
               />
             ) : (
               <Textarea
                 id={field.name}
                 name={field.name}
-                value={formData[field.name] || ''}
+                value={formData[field.name] as string || ''}
                 onChange={handleInputChange}
+                placeholder={field.placeholder}
+                className={`p-2 ${currentPage === 2 ? 'min-h-[400px]' : 'min-h-[150px]'}`}
               />
             )}
             {field.subtext && (
@@ -309,8 +399,8 @@ export default function AdvancedMultiPageForm() {
                     {page.navTitle}
                   </span>
                 </div>
-                {index < pages.length - 1 && (
-                  <Progress className="h-3 flex-grow" value={progress} />
+                {index < 2 && (
+                  <Progress className="h-3 flex-grow" value={pageProgress[index]} />
                 )}
               </React.Fragment>
             ))}
@@ -321,8 +411,8 @@ export default function AdvancedMultiPageForm() {
         <div className="flex flex-col p-8 bg-gray-100 rounded-lg justify-center w-full max-w-5xl">
           <Card className="max-w-2xl mx-auto">
             <CardHeader>
-              <CardTitle>{currentPageData.title}</CardTitle>
-              <CardDescription>{currentPageData.description}</CardDescription>
+              <CardTitle>{pages[currentPage].title}</CardTitle>
+              <CardDescription>{pages[currentPage].description}</CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={(e) => e.preventDefault()}>
@@ -336,10 +426,10 @@ export default function AdvancedMultiPageForm() {
                   ) : (
                     <GradientButton
                       onClick={handleFinalSubmit}
-                      disabled={isSubmitting}
+                      disabled={isGenerating}
                       gradient="linear-gradient(to right, #4facfe 0%, #00f2fe 100%)"
                     >
-                      {isSubmitting ? 'Submitting...' : 'Submit All Data'}
+                      {isGenerating ? 'Generating...' : 'Submit All Data'}
                     </GradientButton>
                   )}
                 </div>
@@ -348,6 +438,6 @@ export default function AdvancedMultiPageForm() {
           </Card>
         </div>
       </div>
-    </div>                
+    </div>
   );
 }

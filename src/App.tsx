@@ -2,9 +2,6 @@ import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react
 import HomePage from './components/HomePage';
 import InputPage from './components/InputPage';
 import Input1 from './components/Input1';
-import Input2 from './components/Input2';
-import Input3 from './components/Input3';
-import Input4 from './components/Input4';
 import GeneratePage from './components/GeneratePage';
 import ViewPage from './components/ViewPage';
 import ExportPage from './components/ExportPage';
@@ -53,9 +50,6 @@ function AppContent() {
           <Route path="/" element={<HomePage />} />
           <Route path="/input" element={<InputPage />} />
           <Route path="/input1" element={<Input1 />} />
-          <Route path="/input2" element={<Input2 />} />
-          <Route path="/input3" element={<Input3 />} />
-          <Route path="/input4" element={<Input4 />} />
           <Route path="/generate" element={<GeneratePage />} />
           <Route path="/view" element={<ViewPage />} />
           <Route path="/export" element={<ExportPage />} />

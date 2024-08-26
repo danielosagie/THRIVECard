@@ -23,116 +23,321 @@ BASE_DIR = 'user_data'
 CHROMA_DIR = os.path.join(BASE_DIR, 'chroma_db')
 DB_PATH = os.path.join(BASE_DIR, 'local_db.sqlite')
 
+UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
+ALLOWED_EXTENSIONS = {'txt', 'pdf', 'doc', 'docx'}
+
 os.makedirs(CHROMA_DIR, exist_ok=True)
 
 agent = Agent("MainAgent", CHROMA_DIR, OLLAMA_BASE_URL, MODEL_NAME)
 
+load_dotenv('.env.local') 
+
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}})
+
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
+
+CORS(app, resources={r"/*": {
+    "origins": FRONTEND_URL,
+    "methods": ["GET", "POST", "OPTIONS"],
+    "allow_headers": ["Content-Type", "Authorization"]
+}})
+
+@app.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Origin', FRONTEND_URL)
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    return response
+
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS personas
-                 (id INTEGER PRIMARY KEY, name TEXT, data JSON, timestamp TEXT)''')
+                 (id INTEGER PRIMARY KEY, 
+                  name TEXT, 
+                  data JSON, 
+                  timestamp TEXT,
+                  professional_summary TEXT,
+                  goals TEXT,
+                  qualifications_and_education TEXT,
+                  skills TEXT,
+                  strengths TEXT,
+                  value_proposition TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS documents
-                 (id INTEGER PRIMARY KEY, filename TEXT UNIQUE, content TEXT, timestamp TEXT)''')
+                 (id INTEGER PRIMARY KEY, 
+                  filename TEXT UNIQUE, 
+                  content TEXT, 
+                  timestamp TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS streaming_responses
-                 (id INTEGER PRIMARY KEY, content TEXT, timestamp TEXT)''')
+                 (id INTEGER PRIMARY KEY, 
+                  content TEXT, 
+                  timestamp TEXT)''')
     conn.commit()
     conn.close()
 
 os.makedirs(BASE_DIR, exist_ok=True)
 init_db()
 
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
 @app.route('/')
 def home():
     return "Server is running"
 
-@app.route('/test', methods=['GET'])
-def test():
-    output = agent.llm.invoke("Come up with 10 names for a song about parrots")
-    return jsonify({"message": f"{output}"}), 200
-
-@app.route('/get_input_documents', methods=['GET'])
-def get_input_documents():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT filename, content FROM documents")
-    documents = {row[0]: row[1] for row in c.fetchall()}
-    conn.close()
-    return jsonify(documents)
-
-@app.route('/update_document', methods=['POST'])
-def update_document():
+@app.route('/set_input_form', methods=['POST'])
+def set_input_form():
     data = request.json
-    filename = secure_filename(data['filename'])
-    content = data['content']
+    filename = secure_filename(data['name'])
+    content = json.dumps(data['content'])
     
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute('''INSERT OR REPLACE INTO documents (filename, content, timestamp)
                  VALUES (?, ?, ?)''', (filename, content, datetime.now().isoformat()))
+    document_id = c.lastrowid
     conn.commit()
     conn.close()
     
-    threading.Thread(target=agent.update_chroma_db, args=(content, filename)).start()
+    return jsonify({'message': f'Input form saved successfully', 'id': document_id})
+
+@app.route('/get_input/<int:document_id>', methods=['GET'])
+def get_input(document_id):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT content FROM documents WHERE id = ?", (document_id,))
+    result = c.fetchone()
+    conn.close()
     
-    return jsonify({'message': f'Document {filename} updated successfully. Chroma DB update started.'})
+    if result:
+        return jsonify({'content': json.loads(result[0])})
+    else:
+        return jsonify({'error': 'Input not found'}), 404
 
-def stream_generator(input_text, documents_content):
-    queue = Queue()
-    def callback(token):
-        queue.put(token)
-
-    threading.Thread(target=agent.generate_stream, args=(input_text, documents_content, callback)).start()
-
-    while True:
-        token = queue.get()
-        if token is None:
-            break
-        yield f"data: {json.dumps({'token': token})}\n\n"
-
-@app.route('/api/generate_persona_stream', methods=['POST'])
-def generate_persona_stream():
+@app.route('/set_response', methods=['POST'])
+def set_response():
     data = request.json
-    input_text = data['input']
-    selected_documents = data.get('selected_documents', [])
+    content = json.dumps(data['content'])
+    
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('''INSERT INTO streaming_responses (content, timestamp)
+                 VALUES (?, ?)''', (content, datetime.now().isoformat()))
+    response_id = c.lastrowid
+    conn.commit()
+    conn.close()
+    
+    return jsonify({'message': 'Response saved successfully', 'id': response_id})
 
-    relevant_docs = agent.get_relevant_documents(input_text, k=5)
-    all_docs = selected_documents + relevant_docs
-    documents_content = ' '.join(all_docs)
-
-    return Response(stream_with_context(stream_generator(input_text, documents_content)),
-                    content_type='text/event-stream')
-
-@app.route('/api/generate_persona', methods=['POST'])
-def generate_persona():
+@app.route('/remove_file', methods=['POST'])
+def remove_file():
     try:
         data = request.json
-        input_text = data['input']
-        selected_documents = data.get('selected_documents', [])
+        filename = secure_filename(data['filename'])
+        file_path = os.path.join(UPLOAD_FOLDER, filename)
 
-        relevant_docs = agent.get_relevant_documents(input_text, k=5)
-        all_docs = selected_documents + relevant_docs
-        documents_content = ' '.join(all_docs)
+        # Remove file from the file system
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        else:
+            return jsonify({"error": "File not found on server"}), 404
 
-        persona_response = agent.generate(input_text, documents_content)
-        
-        try:
-            persona = json.loads(persona_response)
-        except json.JSONDecodeError:
-            return jsonify({"error": "Invalid persona format"}), 500
+        # Remove file entry from the database
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM documents WHERE filename = ?", (filename,))
+        conn.commit()
+        conn.close()
 
-        with sqlite3.connect(DB_PATH) as conn:
-            c = conn.cursor()
-            c.execute("INSERT INTO personas (name, data, timestamp) VALUES (?, ?, ?)",
-                      (persona.get('Name', 'Unnamed Persona'), json.dumps(persona), datetime.now().isoformat()))
-        
-        return jsonify(persona), 200
+        return jsonify({"message": f"File {filename} removed successfully"}), 200
+    except KeyError:
+        return jsonify({"error": "Filename not provided"}), 400
     except Exception as e:
-        logging.error(f"Error in generate_persona: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
+@app.route('/upload_file', methods=['POST'])
+def upload_file():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(file_path)
+        
+        # Store file info in the database
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute('''INSERT INTO documents (filename, content, timestamp)
+                     VALUES (?, ?, ?)''', (filename, '', datetime.now().isoformat()))
+        file_id = c.lastrowid
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'message': 'File uploaded successfully', 'id': file_id, 'filename': filename})
+    return jsonify({'error': 'File type not allowed'}), 400
+
+@app.route('/get_uploaded_files', methods=['GET'])
+def get_uploaded_files():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT id, filename, timestamp FROM documents ORDER BY timestamp DESC")
+    files = [{'id': row[0], 'filename': row[1], 'timestamp': row[2]} for row in c.fetchall()]
+    conn.close()
+    return jsonify({'files': files})
+
+
+@app.route('/generate_persona_stream', methods=['POST'])
+def generate_persona_stream():
+    app.logger.info("Received request for generate_persona_stream")
+    data = request.json
+    app.logger.info(f"Request data: {data}")
+    input_text = data['input']
+    selected_document_ids = data.get('selected_documents', [])
+
+    def generate():
+        persona = {}
+        def callback(chunk):
+            nonlocal persona
+            app.logger.info(f"Generated chunk: {chunk}")
+            try:
+                chunk_data = json.loads(chunk)
+                persona.update(chunk_data)
+                yield f"data: {json.dumps({'token': chunk})}\n\n"
+            except json.JSONDecodeError:
+                yield f"data: {json.dumps({'token': chunk})}\n\n"
+
+        try:
+            app.logger.info("Starting persona generation")
+            agent.generate_stream(input_text, "", callback)
+            app.logger.info("Persona generation completed")
+
+            # Store the streaming response
+            conn = sqlite3.connect(DB_PATH)
+            c = conn.cursor()
+            c.execute('''INSERT INTO streaming_responses (content, timestamp)
+                         VALUES (?, ?)''', (json.dumps(persona), datetime.now().isoformat()))
+            streaming_response_id = c.lastrowid
+
+            # Store the structured persona data
+            c.execute('''INSERT INTO personas_new (name, professional_summary, goals, 
+                         qualifications_and_education, skills, strengths, value_proposition, timestamp)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                      (persona.get('Name', 'Unnamed'),
+                       persona.get('Professional Summary', ''),
+                       json.dumps(persona.get('Goals', [])),
+                       json.dumps(persona.get('Qualifications and Education', [])),
+                       json.dumps(persona.get('Skills', [])),
+                       json.dumps(persona.get('Strengths', [])),
+                       json.dumps(persona.get('Value Proposition', [])),
+                       datetime.now().isoformat()))
+            persona_id = c.lastrowid
+            conn.commit()
+            conn.close()
+
+            app.logger.info(f"Persona stored with ID: {persona_id}")
+            yield f"data: {json.dumps({'complete': True, 'persona_id': persona_id})}\n\n"
+        except Exception as e:
+            app.logger.error(f"Error in generate_persona_stream: {str(e)}")
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+    return Response(stream_with_context(generate()), content_type='text/event-stream')
+
+
+@app.route('/get_current_input/<int:document_id>', methods=['GET'])
+def get_current_input(document_id):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT content FROM documents WHERE id = ?", (document_id,))
+    result = c.fetchone()
+    conn.close()
+    
+    if result:
+        content = json.loads(result[0])
+        return jsonify(content)
+    else:
+        return jsonify({'error': 'Input not found'}), 404
+
+@app.route('/set_new_input/<int:document_id>', methods=['POST'])
+def set_new_input(document_id):
+    data = request.json
+    content = json.dumps(data)
+    
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("UPDATE documents SET content = ?, timestamp = ? WHERE id = ?",
+              (content, datetime.now().isoformat(), document_id))
+    conn.commit()
+    conn.close()
+    
+    return jsonify({'message': 'Input updated successfully'})
+
+@app.route('/get_current_persona/<int:persona_id>', methods=['GET'])
+def get_current_persona(persona_id):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        SELECT name, professional_summary, goals, qualifications_and_education,
+               skills, strengths, value_proposition
+        FROM personas WHERE id = ?
+    """, (persona_id,))
+    result = c.fetchone()
+    conn.close()
+    
+    if result:
+        return jsonify({
+            'name': result[0],
+            'professional_summary': result[1],
+            'goals': json.loads(result[2]),
+            'qualifications_and_education': json.loads(result[3]),
+            'skills': json.loads(result[4]),
+            'strengths': json.loads(result[5]),
+            'value_proposition': json.loads(result[6])
+        })
+    else:
+        return jsonify({'error': 'Persona not found'}), 404
+
+@app.route('/update_persona/<int:persona_id>', methods=['POST'])
+def update_persona(persona_id):
+    data = request.json
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    
+    c.execute("""
+        UPDATE personas SET
+            name = ?,
+            professional_summary = ?,
+            goals = ?,
+            qualifications_and_education = ?,
+            skills = ?,
+            strengths = ?,
+            value_proposition = ?,
+            data = ?,
+            timestamp = ?
+        WHERE id = ?
+    """, (
+        data.get('name'),
+        data.get('professional_summary'),
+        json.dumps(data.get('goals', [])),
+        json.dumps(data.get('qualifications_and_education', [])),
+        json.dumps(data.get('skills', [])),
+        json.dumps(data.get('strengths', [])),
+        json.dumps(data.get('value_proposition', [])),
+        json.dumps(data),
+        datetime.now().isoformat(),
+        persona_id
+    ))
+    
+    conn.commit()
+    conn.close()
+    
+    return jsonify({'message': 'Persona updated successfully'})
 
 @app.route('/get_personas', methods=['GET'])
 def get_personas():
@@ -144,18 +349,13 @@ def get_personas():
     
     return jsonify({'personas': personas})
 
-@app.route('/load_persona/<persona_id>', methods=['GET'])
-def load_persona(persona_id):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT data FROM personas WHERE id = ?", (persona_id,))
-    result = c.fetchone()
-    conn.close()
-    
-    if result:
-        return jsonify({'persona': json.loads(result[0])})
-    else:
-        return jsonify({'error': 'Persona not found'}), 404
-
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    port = int(os.environ.get('FLASK_RUN_PORT', 5000))
+    try:
+        app.run(debug=True, port=port)
+    except OSError as e:
+        if "Address already in use" in str(e):
+            print(f"Port {port} is already in use. Please choose a different port or close the application using this port.")
+        else:
+            print(f"An error occurred: {e}")
+        exit(1)

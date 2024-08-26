@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { SVGProps } from "react"
 import { JSX } from "react/jsx-runtime"
-import { TCard } from "@/components/ui/tcard"
+import { StreamingEditableTCard } from "@/components/ui/tcard"
 
 export default function ExportPage() {
   return (
@@ -51,8 +51,8 @@ export default function ExportPage() {
           </Button>
           <Button variant="default">Resume Bullets</Button>
         </div>
-        < TCard variant="default" className="shadow-2x border-white-500">
-        </TCard>
+        <StreamingEditableTCard />
+      
       </div>
     </div>
   )

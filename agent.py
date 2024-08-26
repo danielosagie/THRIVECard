@@ -1,5 +1,5 @@
-# agent.py
 import os
+import json
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_ollama.llms import OllamaLLM
 from langchain_community.embeddings import OllamaEmbeddings
@@ -44,20 +44,31 @@ class Agent:
         
         Documents content: {documents}
         
-        Include categories such as Name, Description, Education, Experience, Skills, Strengths, Goals, and Values.
+        Include categories such as Name, Professional Summary, Goals, Qualifications and Education, Skills, Strengths, and Value Proposition.
         Format the response as a JSON object.
         """
         self.prompt = ChatPromptTemplate.from_template(self.template)
         self.chain = self.prompt | self.llm
 
-    def generate_stream(self, input_text, documents, callback):
+    def generate_stream(self, input_text, documents_content, callback):
         try:
-            for token in self.chain.stream({
+            full_response = ""
+            for chunk in self.chain.stream({
                 "input_text": input_text,
-                "documents": documents
+                "documents": documents_content
             }):
-                callback(token)
-            callback(None)  # Signal end of stream
+                full_response += chunk
+                callback(chunk)
+            
+            # Try to parse the full response as JSON
+            try:
+                json_response = json.loads(full_response)
+                callback(json.dumps(json_response))
+            except json.JSONDecodeError:
+                # If it's not valid JSON, just return the full response
+                callback(full_response)
+            
+            return full_response
         except Exception as e:
             logging.error(f"Error generating persona stream: {str(e)}")
             raise
