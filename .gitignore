@@ -45,3 +45,4 @@ ENV/
 
 # Chroma
 chroma_db/
+.vercel

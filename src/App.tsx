@@ -11,6 +11,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
+import ExperienceCard from './components/ExperienceCard';
 
 
 
@@ -53,6 +54,7 @@ function AppContent() {
           <Route path="/generate" element={<GeneratePage />} />
           <Route path="/view" element={<ViewPage />} />
           <Route path="/export" element={<ExportPage />} />
+          <Route path="/experience/:id" element={<ExperienceCard />} />
         </Routes>
       </main>
       <footer className="py-6 md:px-8 md:py-0">
